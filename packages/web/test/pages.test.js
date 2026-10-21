@@ -146,3 +146,23 @@ test("without an API origin /api is not proxied", async () => {
     await close(app);
   }
 });
+
+// A wrong API_ORIGIN must fail at startup. Before the fix createApp accepted
+// anything and the first /api request threw inside the async handler, which
+// took the whole dev server down as an unhandled rejection.
+test("createApp refuses an API origin that is not an http: URL", () => {
+  for (const apiOrigin of ["https://api.example.com", "127.0.0.1:4000", "not a url"]) {
+    assert.throws(() => createApp(undefined, { apiOrigin }), { name: "TypeError", message: /http: URL/ }, apiOrigin);
+  }
+});
+
+test("an empty API origin means no proxy, as before", async () => {
+  const app = createApp(undefined, { apiOrigin: "" });
+  const origin = await listen(app);
+  try {
+    const res = await fetch(`${origin}/api/products`);
+    assert.equal(res.status, 404);
+  } finally {
+    await close(app);
+  }
+});

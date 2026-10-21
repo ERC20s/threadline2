@@ -62,7 +62,9 @@
         button.className = "filter";
         button.textContent = name;
         button.setAttribute("aria-pressed", String(name === current));
-        button.addEventListener("click", () => show(name, true));
+        // Re-clicking the pressed filter refreshes the grid but replaces the
+        // history entry, so Back never has to step through the same page twice.
+        button.addEventListener("click", () => show(name, name !== current));
         return button;
       }));
       renderGrid(grid, products);

@@ -38,7 +38,10 @@
 
     // The API resolves ?category= (case-insensitive, unknown means "All") and
     // answers the category list, so the buttons and the filter agree with it.
+    // Answers can arrive out of order, so only the latest request may draw.
+    let latest = 0;
     async function show(category, push) {
+      const request = ++latest;
       const query = category ? `?category=${encodeURIComponent(category)}` : "";
       let res;
       try {
@@ -46,6 +49,7 @@
       } catch {
         res = { ok: false };
       }
+      if (request !== latest) return;
       if (!res.ok) {
         status.textContent = "The catalogue could not be loaded. Please try again shortly.";
         status.dataset.tone = "error";

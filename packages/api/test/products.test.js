@@ -111,3 +111,16 @@ test("only GET is served for the catalogue", async () => {
     assert.equal(res.status, 404, path);
   }
 });
+
+// The web dev server forwards /api/<path> as <path>, so GET /api// reaches the
+// API as "//", which new URL() rejects. That must not take the API down.
+test("a path the URL parser rejects answers 400 and the API keeps serving", async () => {
+  for (const path of ["//", "//:"]) {
+    // Before the fix the request was never answered, so give up rather than hang.
+    const res = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(2000) });
+    assert.equal(res.status, 400, path);
+    assert.deepEqual(await res.json(), { error: "Bad request" }, path);
+  }
+  const { res } = await get("/products");
+  assert.equal(res.status, 200);
+});

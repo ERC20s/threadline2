@@ -1,6 +1,7 @@
 import http from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { pipeline } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 export const publicDir = fileURLToPath(new URL("../public/", import.meta.url));
@@ -22,7 +23,9 @@ function proxy(req, res, url, apiOrigin) {
   const headers = { ...req.headers, host: target.host };
   const upstream = http.request(target, { method: req.method, headers }, (answer) => {
     res.writeHead(answer.statusCode, answer.headers);
-    answer.pipe(res);
+    // pipeline, not pipe: if the API drops the answer part-way the browser's
+    // connection is cut too, instead of waiting forever for the rest.
+    pipeline(answer, res, () => {});
   });
   upstream.on("error", () => {
     if (res.headersSent) return res.destroy();

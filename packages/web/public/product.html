@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Product — threadline2</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="header">
+    <a class="brand" href="index.html">threadline2</a>
+    <nav class="nav" aria-label="Site navigation">
+      <a href="index.html">Home</a>
+      <a href="products.html">Shop</a>
+    </nav>
+  </header>
+
+  <main id="content">
+    <p class="breadcrumb"><a href="index.html">Home</a> &rsaquo; <a href="products.html">Shop</a> &rsaquo; <span id="crumb">Product</span></p>
+
+    <section class="product" id="product" aria-live="polite">
+      <div class="media"><img id="product-image" alt="" width="900" height="1100" hidden></div>
+      <div class="meta">
+        <p class="kicker" id="product-category"></p>
+        <h1 id="product-name">Loading…</h1>
+        <div class="price" id="product-price"></div>
+        <p class="description" id="product-description"></p>
+        <ul class="details" id="product-details"></ul>
+        <div id="size-field" hidden>
+          <span class="field-label" id="size-label">Choose a size</span>
+          <p class="hint" id="fit-note"></p>
+          <div class="sizes" id="sizes" role="group" aria-labelledby="size-label"></div>
+        </div>
+        <p class="actions"><a class="btn btn-ghost" href="products.html">Back to the shop</a></p>
+        <p class="status" id="product-status" role="status"></p>
+      </div>
+    </section>
+
+    <section id="not-found" hidden aria-labelledby="not-found-heading">
+      <h1 id="not-found-heading">We could not find that piece</h1>
+      <p class="note">The link may be out of date. Everything we currently make is below.</p>
+      <div class="grid" id="fallback-grid"></div>
+    </section>
+
+    <section class="section" id="related" hidden aria-labelledby="related-heading">
+      <h2 id="related-heading">You might also like</h2>
+      <div class="grid" id="related-grid"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { getJSON, money, productIdFromLocation, renderGrid } from "./catalogue.js";
+
+    const $ = (id) => document.getElementById(id);
+    const status = $("product-status");
+
+    const fail = (message) => {
+      $("product-name").textContent = "Something went wrong";
+      status.textContent = message;
+      status.dataset.tone = "error";
+    };
+
+    async function load(path) {
+      try {
+        return await getJSON(path);
+      } catch {
+        return { ok: false, status: 0 };
+      }
+    }
+
+    async function notFound() {
+      $("product").hidden = true;
+      $("not-found").hidden = false;
+      $("crumb").textContent = "Not found";
+      document.title = "Not found — threadline2";
+      const all = await load("/products");
+      if (all.ok) renderGrid($("fallback-grid"), all.body.products);
+    }
+
+    // The chosen size is written to the URL (?id=…&size=M) so a shared or
+    // reloaded link keeps it.
+    function renderSizes(sizes) {
+      const url = new URL(location.href);
+      const wanted = sizes.length === 1 ? sizes[0] : url.searchParams.get("size");
+      $("size-label").textContent = sizes.length === 1 ? "One size" : "Choose a size";
+      $("sizes").replaceChildren(...sizes.map((size) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "size";
+        button.textContent = size;
+        button.setAttribute("aria-pressed", String(size === wanted));
+        button.addEventListener("click", () => {
+          for (const other of $("sizes").children) other.setAttribute("aria-pressed", String(other === button));
+          url.searchParams.set("size", size);
+          history.replaceState(null, "", url);
+        });
+        return button;
+      }));
+      $("size-field").hidden = false;
+    }
+
+    const id = productIdFromLocation(location);
+    if (!id) {
+      notFound();
+    } else {
+      const res = await load(`/products/${encodeURIComponent(id)}`);
+      if (res.status === 404) {
+        notFound();
+      } else if (!res.ok) {
+        fail("This piece could not be loaded. Please try again shortly.");
+      } else {
+        const { product, related } = res.body;
+        document.title = `${product.name} — threadline2`;
+        $("crumb").textContent = product.name;
+        $("product-category").textContent = product.category;
+        $("product-name").textContent = product.name;
+        $("product-price").textContent = money(product.price);
+        $("product-description").textContent = product.description;
+        $("product-details").replaceChildren(...product.details.map((line) => {
+          const li = document.createElement("li");
+          li.textContent = line;
+          return li;
+        }));
+        $("fit-note").textContent = product.fitNote || "Fits run relaxed.";
+        renderSizes(product.sizes);
+        const image = $("product-image");
+        image.src = product.image;
+        image.alt = product.alt || product.name;
+        image.hidden = false;
+        renderGrid($("related-grid"), related);
+        $("related").hidden = related.length === 0;
+      }
+    }
+  </script>
+</body>
+</html>

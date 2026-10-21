@@ -1,14 +1,15 @@
 # threadline2
 
 threadline2 is a small Node.js (npm workspaces, no third-party dependencies) project governed by the `.d8a` file.
-It has two packages: `packages/web`, a static dev server (port 3000), and `packages/api`, an HTTP API on port 4000 (`GET /health`).
+It has two packages: `packages/web`, a static dev server (port 3000), and `packages/api`, an HTTP API on port 4000 (`GET /health`, `GET /products[?category=]`, `GET /products/:id`).
+The product grid (`products.html`) and product page (`product.html`) fetch the catalogue from `/api/*`, which the dev server forwards to the API.
 
 ## Commands
 
 These match the `run:` block at the end of `.d8a`.
 
 - Install: `npm ci` (Node 20+; CI uses Node 22)
-- Dev server: `npm run dev` (serves `packages/web/public` on `PORT`, default 3000)
+- Dev server: `npm run dev` (serves `packages/web/public` on `PORT`, default 3000; forwards `/api/*` to `API_ORIGIN`, default `http://127.0.0.1:4000`)
 - API: `cd packages/api && npm start` (listens on `PORT`, default 4000)
 - Check/test: `npm test` (runs `node --test` in every workspace; this is the only declared check)
 

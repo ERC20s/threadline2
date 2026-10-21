@@ -21,6 +21,11 @@ const fakeElement = (doc) => ({
   addEventListener(type, fn) { this.listeners[type] = fn; },
 });
 
+// Each load gets its own module URL: Node caches a data: module by its text,
+// so an identical import a second time would return the first run instead of
+// running the page script again.
+let loads = 0;
+
 async function loadPage() {
   const doc = { createElement: () => fakeElement(doc) };
   const elements = { "catalogue-grid": fakeElement(doc), filters: fakeElement(doc), "catalogue-status": fakeElement(doc) };
@@ -40,7 +45,7 @@ async function loadPage() {
   const html = await readFile(path.join(publicDir, "products.html"), "utf8");
   const script = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
     .replace('"./catalogue.js"', JSON.stringify(pathToFileURL(path.join(publicDir, "catalogue.js")).href));
-  await import(`data:text/javascript,${encodeURIComponent(script)}`);
+  await import(`data:text/javascript,${encodeURIComponent(`${script}\n// load ${++loads}`)}`);
   return { elements, requests, history };
 }
 
@@ -76,5 +81,29 @@ test("products.html shows the last category clicked even when an earlier answer 
   assert.deepEqual(history, [
     ["replace", "https://shop.example/products.html"],
     ["push", "https://shop.example/products.html?category=Tops"],
+  ]);
+});
+
+test("products.html re-clicking the pressed filter refreshes the grid without a new history entry", async () => {
+  const { elements, requests, history } = await loadPage();
+  requests.shift().resolve(answer("All", ["everyday-tee", "canvas-overshirt"]));
+  await settle();
+
+  const button = (name) => elements.filters.children.find((b) => b.textContent === name);
+  button("Tops").listeners.click();
+  requests.shift().resolve(answer("Tops", ["everyday-tee"]));
+  await settle();
+  button("Tops").listeners.click();
+  const again = requests.shift();
+  assert.equal(again.url, "/api/products?category=Tops");
+  again.resolve(answer("Tops", ["everyday-tee", "ribbed-longsleeve"]));
+  await settle();
+
+  assert.equal(elements["catalogue-status"].textContent, "2 pieces in Tops.");
+  assert.equal(button("Tops").attributes["aria-pressed"], "true");
+  assert.deepEqual(history, [
+    ["replace", "https://shop.example/products.html"],
+    ["push", "https://shop.example/products.html?category=Tops"],
+    ["replace", "https://shop.example/products.html?category=Tops"],
   ]);
 });

@@ -17,7 +17,7 @@ const types = {
 // Only the path and query are taken from the request, so no request can
 // point the proxy at another host.
 function proxy(req, res, url, apiOrigin) {
-  const target = new URL(apiOrigin);
+  const target = new URL(apiOrigin.href);
   target.pathname = url.pathname.slice("/api".length) || "/";
   target.search = url.search;
   const headers = { ...req.headers, host: target.host };
@@ -35,9 +35,30 @@ function proxy(req, res, url, apiOrigin) {
   req.pipe(upstream);
 }
 
+// apiOrigin is checked once, here, so a wrong API_ORIGIN stops `npm run dev`
+// at startup with a clear message. Checked only in proxy(), the throw lands
+// inside the async request handler as an unhandled rejection, which exits the
+// process on the first /api request instead.
+function parseApiOrigin(apiOrigin) {
+  if (!apiOrigin) return null;
+  let parsed = null;
+  try {
+    parsed = new URL(apiOrigin);
+  } catch {}
+  if (!parsed || parsed.protocol !== "http:") {
+    throw new TypeError(`apiOrigin must be an http: URL such as http://127.0.0.1:4000, got ${JSON.stringify(apiOrigin)}`);
+  }
+  return parsed;
+}
+
 // Serves files from public/ and nothing outside it. With apiOrigin set,
 // /api and everything under it is proxied there instead.
 export function createApp(root = publicDir, { apiOrigin } = {}) {
+  const upstreamOrigin = parseApiOrigin(apiOrigin);
+  // Resolved without a trailing separator, so the containment check below
+  // compares whole path segments: "<root>-private/x" must not pass as inside
+  // "<root>" just because the string starts the same way.
+  const base = path.resolve(root);
   return http.createServer(async (req, res) => {
     let url;
     let pathname;
@@ -48,13 +69,13 @@ export function createApp(root = publicDir, { apiOrigin } = {}) {
       res.writeHead(400).end("Bad request");
       return;
     }
-    if (apiOrigin && /^\/api(\/|$)/.test(url.pathname)) {
-      proxy(req, res, url, apiOrigin);
+    if (upstreamOrigin && /^\/api(\/|$)/.test(url.pathname)) {
+      proxy(req, res, url, upstreamOrigin);
       return;
     }
     if (pathname.endsWith("/")) pathname += "index.html";
-    const file = path.join(root, pathname);
-    if (!file.startsWith(root)) {
+    const file = path.join(base, pathname);
+    if (!file.startsWith(base + path.sep)) {
       res.writeHead(404).end("Not found");
       return;
     }

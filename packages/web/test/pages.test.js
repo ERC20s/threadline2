@@ -166,3 +166,13 @@ test("an empty API origin means no proxy, as before", async () => {
     await close(app);
   }
 });
+
+// proxy() keeps only the origin's scheme, host and port: a path or query in
+// API_ORIGIN would be dropped without a word, sending /api/health to /health.
+test("createApp refuses an API origin with a path or query it would drop", () => {
+  for (const apiOrigin of ["http://127.0.0.1:4000/v1", "http://127.0.0.1:4000/?key=1", "http://127.0.0.1:4000/#api"]) {
+    assert.throws(() => createApp(undefined, { apiOrigin }), { name: "TypeError", message: /no path or query/ }, apiOrigin);
+  }
+  // A trailing slash is still just the origin.
+  createApp(undefined, { apiOrigin: "http://127.0.0.1:4000/" });
+});

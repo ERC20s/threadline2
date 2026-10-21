@@ -33,20 +33,27 @@ async function loadPage() {
 
   const requests = [];
   const history = [];
+  const listeners = {};
   globalThis.document = doc;
-  globalThis.location = { href: "https://shop.example/products.html", search: "" };
+  // As in a browser, pushState and replaceState move the address bar.
+  globalThis.location = new URL("https://shop.example/products.html");
   globalThis.history = {
-    pushState: (state, title, url) => history.push(["push", String(url)]),
-    replaceState: (state, title, url) => history.push(["replace", String(url)]),
+    pushState: (state, title, url) => { history.push(["push", String(url)]); location.href = String(url); },
+    replaceState: (state, title, url) => { history.push(["replace", String(url)]); location.href = String(url); },
   };
-  globalThis.addEventListener = () => {};
+  globalThis.addEventListener = (type, fn) => { listeners[type] = fn; };
   globalThis.fetch = (url) => new Promise((resolve) => requests.push({ url, resolve }));
 
   const html = await readFile(path.join(publicDir, "products.html"), "utf8");
   const script = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
     .replace('"./catalogue.js"', JSON.stringify(pathToFileURL(path.join(publicDir, "catalogue.js")).href));
   await import(`data:text/javascript,${encodeURIComponent(`${script}\n// load ${++loads}`)}`);
-  return { elements, requests, history };
+  // Back: the browser moves the address bar first, then fires popstate.
+  const back = (url) => {
+    location.href = url;
+    listeners.popstate();
+  };
+  return { elements, requests, history, back };
 }
 
 const answer = (category, ids) => ({
@@ -106,4 +113,53 @@ test("products.html re-clicking the pressed filter refreshes the grid without a 
     ["push", "https://shop.example/products.html?category=Tops"],
     ["replace", "https://shop.example/products.html?category=Tops"],
   ]);
+});
+
+// The push/replace choice must follow the address bar, not the last grid drawn:
+// after Back the buttons still show the old category until the answer lands.
+test("products.html clicking the still-pressed filter after Back adds a history entry", async () => {
+  const { elements, requests, history, back } = await loadPage();
+  requests.shift().resolve(answer("All", ["everyday-tee", "canvas-overshirt"]));
+  await settle();
+  const button = (name) => elements.filters.children.find((b) => b.textContent === name);
+  button("Tops").listeners.click();
+  requests.shift().resolve(answer("Tops", ["everyday-tee"]));
+  await settle();
+
+  back("https://shop.example/products.html");
+  const backAnswer = requests.shift();
+  assert.equal(backAnswer.url, "/api/products");
+  // Before the All answer arrives, Tops is still drawn as pressed; click it.
+  button("Tops").listeners.click();
+  requests.shift().resolve(answer("Tops", ["everyday-tee"]));
+  await settle();
+  backAnswer.resolve(answer("All", ["everyday-tee", "canvas-overshirt"]));
+  await settle();
+
+  assert.equal(elements["catalogue-status"].textContent, "1 piece in Tops.");
+  // A push keeps the All entry for Back; a replace would overwrite it with Tops.
+  assert.deepEqual(history.slice(2), [["push", "https://shop.example/products.html?category=Tops"]]);
+});
+
+test("products.html retrying All after a failed Back does not add a duplicate entry", async () => {
+  const { elements, requests, history, back } = await loadPage();
+  requests.shift().resolve(answer("All", ["everyday-tee", "canvas-overshirt"]));
+  await settle();
+  const button = (name) => elements.filters.children.find((b) => b.textContent === name);
+  button("Tops").listeners.click();
+  requests.shift().resolve(answer("Tops", ["everyday-tee"]));
+  await settle();
+
+  back("https://shop.example/products.html");
+  requests.shift().resolve({ status: 503, ok: false, json: async () => ({ error: "API unavailable" }) });
+  await settle();
+  assert.equal(elements["catalogue-status"].dataset.tone, "error");
+
+  // The address bar already shows All; asking for it again must not push it twice.
+  button("All").listeners.click();
+  requests.shift().resolve(answer("All", ["everyday-tee", "canvas-overshirt"]));
+  await settle();
+
+  assert.equal(elements["catalogue-status"].textContent, "2 pieces.");
+  assert.deepEqual(history.slice(2), [["replace", "https://shop.example/products.html"]]);
 });

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shop — threadline2</title>
+  <meta name="description" content="The full Threadline catalogue: tees, shirts, knitwear, outerwear, dresses and accessories.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="header">
+    <a class="brand" href="index.html">threadline2</a>
+    <nav class="nav" aria-label="Site navigation">
+      <a href="index.html">Home</a>
+      <a href="products.html" aria-current="page">Shop</a>
+    </nav>
+  </header>
+
+  <main id="content">
+    <p class="breadcrumb"><a href="index.html">Home</a> &rsaquo; Shop</p>
+    <h1 id="page-heading">The collection</h1>
+    <p class="note">Every piece we currently make. Photographs are placeholders.</p>
+
+    <section aria-labelledby="page-heading">
+      <div class="actions" id="filters" role="group" aria-label="Filter by category"></div>
+      <div class="grid" id="catalogue-grid"></div>
+      <p class="status" id="catalogue-status" role="status">Loading the catalogue…</p>
+      <noscript><p class="note">The catalogue is loaded with JavaScript.</p></noscript>
+    </section>
+  </main>
+
+  <script type="module">
+    import { getJSON, renderGrid } from "./catalogue.js";
+
+    const grid = document.getElementById("catalogue-grid");
+    const filters = document.getElementById("filters");
+    const status = document.getElementById("catalogue-status");
+
+    // The API resolves ?category= (case-insensitive, unknown means "All") and
+    // answers the category list, so the buttons and the filter agree with it.
+    async function show(category, push) {
+      const query = category ? `?category=${encodeURIComponent(category)}` : "";
+      let res;
+      try {
+        res = await getJSON(`/products${query}`);
+      } catch {
+        res = { ok: false };
+      }
+      if (!res.ok) {
+        status.textContent = "The catalogue could not be loaded. Please try again shortly.";
+        status.dataset.tone = "error";
+        return;
+      }
+      const { category: current, categories, products } = res.body;
+      filters.replaceChildren(...categories.map((name) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "filter";
+        button.textContent = name;
+        button.setAttribute("aria-pressed", String(name === current));
+        button.addEventListener("click", () => show(name, true));
+        return button;
+      }));
+      renderGrid(grid, products);
+      status.textContent = `${products.length} ${products.length === 1 ? "piece" : "pieces"}${current === "All" ? "" : ` in ${current}`}.`;
+      delete status.dataset.tone;
+
+      const url = new URL(location.href);
+      if (current === "All") url.searchParams.delete("category");
+      else url.searchParams.set("category", current);
+      history[push ? "pushState" : "replaceState"]({ category: current }, "", url);
+    }
+
+    addEventListener("popstate", () => show(new URLSearchParams(location.search).get("category"), false));
+    show(new URLSearchParams(location.search).get("category"), false);
+  </script>
+</body>
+</html>

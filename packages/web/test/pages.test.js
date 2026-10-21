@@ -14,6 +14,13 @@ let base;
 before(async () => {
   // A stand-in for packages/api that records what reached it.
   upstream = http.createServer((req, res) => {
+    if (req.url === "/drop") {
+      // Promise a body, send part of it, then die (an API crash or restart mid-answer).
+      res.writeHead(200, { "Content-Type": "application/json", "Content-Length": "100" });
+      res.write('{"partial":');
+      setTimeout(() => res.socket.destroy(), 20);
+      return;
+    }
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
@@ -78,6 +85,18 @@ test("the API's status code passes through the proxy", async () => {
   const res = await fetch(`${base}/api/missing`);
   assert.equal(res.status, 404);
   assert.deepEqual(await res.json(), { url: "/missing" });
+});
+
+test("an answer the API drops part-way is cut off for the browser, not left hanging", async () => {
+  // Before the fix the browser waited for the rest of the body forever; give up
+  // after 2s so that shows as a TimeoutError rather than a stuck test.
+  const res = await fetch(`${base}/api/drop`, { signal: AbortSignal.timeout(2000) });
+  assert.equal(res.status, 200);
+  await assert.rejects(res.text(), (err) => {
+    assert.notEqual(err.name, "TimeoutError");
+    assert.equal(err.name, "TypeError");
+    return true;
+  });
 });
 
 test("a request body reaches the API", async () => {

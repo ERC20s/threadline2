@@ -18,7 +18,14 @@ function decodeSegment(segment) {
 
 export function createApp() {
   return http.createServer((req, res) => {
-    const { pathname, searchParams } = new URL(req.url, "http://placeholder");
+    let url;
+    try {
+      url = new URL(req.url, "http://placeholder");
+    } catch {
+      // A path such as "//" is not a URL at all; throwing here would kill the process.
+      return json(res, 400, { error: "Bad request" });
+    }
+    const { pathname, searchParams } = url;
     if (req.method !== "GET") return json(res, 404, { error: "Not found" });
     if (pathname === "/health") return json(res, 200, { ok: true });
     if (pathname === "/products") {

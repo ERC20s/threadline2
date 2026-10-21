@@ -48,6 +48,11 @@ function parseApiOrigin(apiOrigin) {
   if (!parsed || parsed.protocol !== "http:") {
     throw new TypeError(`apiOrigin must be an http: URL such as http://127.0.0.1:4000, got ${JSON.stringify(apiOrigin)}`);
   }
+  // proxy() replaces the path and query with the request's, so any given here
+  // would be dropped silently and /api/x would reach the API's /x instead.
+  if (parsed.pathname !== "/" || parsed.search || parsed.hash) {
+    throw new TypeError(`apiOrigin must be an origin with no path or query, such as http://127.0.0.1:4000, got ${JSON.stringify(apiOrigin)}`);
+  }
   return parsed;
 }
 

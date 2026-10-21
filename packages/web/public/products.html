@@ -62,9 +62,7 @@
         button.className = "filter";
         button.textContent = name;
         button.setAttribute("aria-pressed", String(name === current));
-        // Re-clicking the pressed filter refreshes the grid but replaces the
-        // history entry, so Back never has to step through the same page twice.
-        button.addEventListener("click", () => show(name, name !== current));
+        button.addEventListener("click", () => show(name, true));
         return button;
       }));
       renderGrid(grid, products);
@@ -74,7 +72,11 @@
       const url = new URL(location.href);
       if (current === "All") url.searchParams.delete("category");
       else url.searchParams.set("category", current);
-      history[push ? "pushState" : "replaceState"]({ category: current }, "", url);
+      // Push only when the address bar actually changes: re-clicking the
+      // category already shown replaces the entry, so Back never has to step
+      // through the same page twice. Compared with location rather than the
+      // pressed button, which lags behind Back until its answer lands.
+      history[push && url.href !== location.href ? "pushState" : "replaceState"]({ category: current }, "", url);
     }
 
     addEventListener("popstate", () => show(new URLSearchParams(location.search).get("category"), false));
